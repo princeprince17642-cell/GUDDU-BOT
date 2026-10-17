@@ -6,7 +6,7 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ChatJoinRequestHandler, CommandHandler, MessageHandler, filters, ContextTypes
 
-# --- FLASK SERVER (24/7 एक्टिव रखने के लिए) ---
+# --- FLASK SERVER (24/7 Active rakhne ke liye) ---
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -22,7 +22,7 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- तेरा नया बोट टोकन और एडमिन आईडी ---
+# --- Tera Bot Token aur Admin ID ---
 BOT_TOKEN = "8870037435:AAHFVV4uCBAkroUtaBs7NVzG7KmjJulvo7c"
 ADMIN_ID = 8343576029                   
 USERS_FILE = "users.json"
@@ -74,10 +74,12 @@ def get_saved_welcome_message():
             return None
     return None
 
-# --- 1. ज्वाइन रिक्वेस्ट आते ही डेटा सेव करना और प्रीमियम वेलकम मैसेज भेजना ---
+# --- 1. Join Request aate hi data save karna aur Name ke sath Welcome message bhejna ---
 async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     request = update.chat_join_request
-    user_id = request.from_user.id
+    user = request.from_user
+    user_id = user.id
+    user_name = user.first_name  # Bande ka naam yahan uthega
     
     save_user(user_id)
 
@@ -85,23 +87,28 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
     if welcome_data:
         try:
             if welcome_data.get("type") == "text":
+                # Naam ko message ke aage ya shuruat mein jod rahe hain
+                custom_text = f"<b>{user_name}</b>, {welcome_data['text']}"
                 await context.bot.send_message(
                     chat_id=user_id, 
-                    text=welcome_data["text"], 
-                    entities=welcome_data.get("entities")
+                    text=custom_text, 
+                    parse_mode="HTML"
                 )
             elif welcome_data.get("type") == "photo":
+                # Photo wale message mein caption ke aage naam jod rahe hain
+                original_caption = welcome_data.get("caption", "")
+                custom_caption = f"<b>{user_name}</b>, {original_caption}" if original_caption else f"<b>{user_name}</b>"
                 await context.bot.send_photo(
                     chat_id=user_id, 
                     photo=welcome_data["file_id"], 
-                    caption=welcome_data.get("caption", ""),
-                    caption_entities=welcome_data.get("caption_entities")
+                    caption=custom_caption,
+                    parse_mode="HTML"
                 )
         except Exception as e:
             print(f"Error sending custom welcome message: {e}")
     else:
         try:
-            await context.bot.send_message(chat_id=user_id, text="Hello")
+            await context.bot.send_message(chat_id=user_id, text=f"Hello {user_name}!")
         except Exception as e:
             print(f"Error sending default text: {e}")
 
@@ -112,22 +119,22 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print(f"Error sending voice note: {e}")
 
-# --- 2. टेक्स्ट ब्रॉडकास्ट कमांड ---
+# --- 2. Text Broadcast Command ---
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("तू इस कमांड को इस्तेमाल नहीं कर सकता!")
+        await update.message.reply_text("Tu is command ko use nahi kar sakta!")
         return
 
     message_text = " ".join(context.args)
     if not message_text:
-        await update.message.reply_text("❌ कृपया संदेश लिखें, जैसे: /broadcast आपका संदेश")
+        await update.message.reply_text("❌ Kripya message likhein, jaise: /broadcast aapka sandesh")
         return
 
     users = get_all_users()
     if users:
         success = 0
         failed = 0
-        status_msg = await update.message.reply_text("📤 ब्रॉडकास्ट शुरू हो गया है...")
+        status_msg = await update.message.reply_text("📤 Broadcast shuru ho gaya hai...")
         
         for user_id in users:
             try:
@@ -136,50 +143,53 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 failed += 1
         
-        await status_msg.edit_text(f"✅ ब्रॉडकास्ट पूरा हुआ!\n\n सफल: {success}\n असफल: {failed}")
+        await status_msg.edit_text(f"✅ Broadcast pura hua!\n\n Safal: {success}\n Asafal: {failed}")
     else:
-        await update.message.reply_text("❌ कोई यूजर डेटाबेस नहीं मिला!")
+        await update.message.reply_text("❌ Koi user database nahi mila!")
 
-# --- 3. एडमिन लाइव चैट और सेटिंग्स ---
+# --- 3. Admin Live Chat aur Settings Handler ---
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message = update.message
 
     if user.id == ADMIN_ID:
         
-        # --- प्रीमियम वेलकम मैसेज सेट करना (/setwelcome) ---
-        if message.caption and message.caption.strip() == "/setwelcome":
-            source_msg = message.reply_to_message if message.reply_to_message else message
-            welcome_data = {}
-            
-            if source_msg.text:
-                welcome_data = {
-                    "type": "text",
-                    "text": source_msg.text,
-                    "entities": [e.to_dict() for e in source_msg.entities] if source_msg.entities else []
-                }
-            elif source_msg.photo:
-                welcome_data = {
-                    "type": "photo",
-                    "file_id": source_msg.photo[-1].file_id,
-                    "caption": source_msg.caption or "",
-                    "caption_entities": [e.to_dict() for e in source_msg.caption_entities] if source_msg.caption_entities else []
-                }
+        # --- Welcome Message Set karne ka tarika (Long press reply karke /setwelcome) ---
+        if message.text and message.text.strip() == "/setwelcome":
+            if message.reply_to_message:
+                source_msg = message.reply_to_message
+                welcome_data = {}
+                
+                if source_msg.text:
+                    welcome_data = {
+                        "type": "text",
+                        "text": source_msg.text
+                    }
+                elif source_msg.photo:
+                    welcome_data = {
+                        "type": "photo",
+                        "file_id": source_msg.photo[-1].file_id,
+                        "caption": source_msg.caption or ""
+                    }
 
-            if welcome_data:
-                with open(WELCOME_MSG_FILE, "w", encoding="utf-8") as f:
-                    json.dump(welcome_data, f, ensure_ascii=False)
-                await message.reply_text("✨ प्रीमियम वेलकम मैसेज सफलतापर्वक सेट हो गया है!")
+                if welcome_data:
+                    with open(WELCOME_MSG_FILE, "w", encoding="utf-8") as f:
+                        json.dump(welcome_data, f, ensure_ascii=False)
+                    await message.reply_text("✨ Premium welcome message safaltapurvak set ho gaya hai!")
+                else:
+                    await message.reply_text("❌ Jiss message par reply kiya hai usme text ya photo honi chahiye.")
             else:
-                await message.reply_text("❌ कृपया किसी टेक्स्ट या फोटो वाले मैसेज पर /setwelcome लिखकर भेजें।")
+                await message.reply_text("❌ Kripya apne us message par long press karke reply karein jise welcome banana hai aur likhein: /setwelcome")
             return
 
+        # Voice note parmanent set karne ke liye (/setvoice)
         if message.voice and message.caption and message.caption.strip() == "/setvoice":
             with open(VOICE_FILE_ID_FILE, "w") as f:
                 f.write(message.voice.file_id)
-            await message.reply_text("✅ वॉइस नोट परमानेंट सेट हो गया है!")
+            await message.reply_text("✅ Voice note parmanent set ho gaya hai!")
             return
 
+        # Voice note sabko ek saath bhejne ke liye (/broadcast_voice)
         if message.voice and message.caption and message.caption.strip() == "/broadcast_voice":
             voice_file_id = message.voice.file_id
             users = get_all_users()
@@ -187,7 +197,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if users:
                 success = 0
                 failed = 0
-                status_msg = await message.reply_text("🎙️ वॉइस नोट ब्रॉडकास्ट शुरू हो रहा है...")
+                status_msg = await message.reply_text("🎙️ Voice note broadcast shuru ho raha hai...")
                 
                 for user_id in users:
                     try:
@@ -196,11 +206,12 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         failed += 1
                 
-                await status_msg.edit_text(f"✅ वॉइस नोट ब्रॉडकास्ट पूरा हुआ!\n\n सफल: {success}\n असफल: {failed}")
+                await status_msg.edit_text(f"✅ Voice note broadcast pura hua!\n\n Safal: {success}\n Asafal: {failed}")
             else:
-                await message.reply_text("❌ कोई यूजर डेटाबेस नहीं मिला!")
+                await message.reply_text("❌ Koi user database nahi mila!")
             return
 
+        # Agar admin kisi user ke message par reply kare
         if message.reply_to_message:
             replied_text = message.reply_to_message.text or message.reply_to_message.caption
             if replied_text and "User ID:" in replied_text:
@@ -213,29 +224,29 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     elif message.text:
                         await context.bot.send_message(chat_id=target_user_id, text=message.text)
                     
-                    await message.reply_text("✅ मैसेज यूजर को भेज दिया गया है!")
+                    await message.reply_text("✅ Message user ko bhej diya gaya hai!")
                 except Exception as g:
-                    await message.reply_text(f"❌ भेजने में एरर आया: {g}")
+                    await message.reply_text(f"❌ Bhejne mein error aaya: {g}")
         return
 
     else:
         save_user(user.id)
         
         user_name = user.full_name
-        username = f"@{user.username}" if user.username else "कोई यूजरनेम नहीं"
+        username = f"@{user.username}" if user.username else "Koi username nahi"
         
-        forward_header = f"📩 नया मैसेज आया है!\n👤 नाम: {user_name}\n🔗 यूजरनेम: {username}\n🆔 User ID: {user.id}\n-------------------\n"
+        forward_header = f"📩 Naya message aaya hai!\n👤 Naam: {user_name}\n🔗 Username: {username}\n🆔 User ID: {user.id}\n-------------------\n"
         
         try:
             if message.text:
                 await context.bot.send_message(chat_id=ADMIN_ID, text=forward_header + message.text)
             elif message.voice:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=forward_header + "[नीचे यूजर का वॉइस नोट है]")
+                await context.bot.send_message(chat_id=ADMIN_ID, text=forward_header + "[Neeche user ka voice note hai]")
                 await context.bot.send_voice(chat_id=ADMIN_ID, voice=message.voice.file_id)
             elif message.photo:
                 await context.bot.send_photo(chat_id=ADMIN_ID, photo=message.photo[-1].file_id, caption=forward_header + (message.caption or ""))
             else:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=forward_header + "[यूजर ने मीडिया भेजा है]")
+                await context.bot.send_message(chat_id=ADMIN_ID, text=forward_header + "[User ne media bheja hai]")
         except Exception as e:
                 print(f"Error forwarding to admin: {e}")
 
