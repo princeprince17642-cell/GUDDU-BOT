@@ -73,7 +73,7 @@ def get_saved_welcome_messages():
                 if isinstance(data, list):
                     return data
                 elif isinstance(data, dict):
-                    return [data] # पुराने सिंगल मैसेज को भी लिस्ट मान लेगा
+                    return [data]
         except:
             return []
     return []
@@ -92,7 +92,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         for index, welcome_data in enumerate(welcome_list):
             try:
                 msg_type = welcome_data.get("type")
-                is_first = (index == 0) # सिर्फ पहले वाले मैसेज के आगे नाम जुड़ेगा
+                is_first = (index == 0)
                 
                 if msg_type == "text":
                     text_content = welcome_data['text']
@@ -138,7 +138,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print(f"Error sending voice note: {e}")
 
-# --- 2. /setwelcome कमांड (एक-एक करके मैसेज जोड़ता जाएगा) ---
+# --- 2. /setwelcome कमांड ---
 async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -171,7 +171,7 @@ async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         if welcome_data:
             welcome_list = get_saved_welcome_messages()
-            welcome_list.append(welcome_data) # नया मैसेज लिस्ट में जोड़ देगा
+            welcome_list.append(welcome_data)
             with open(WELCOME_MSG_FILE, "w", encoding="utf-8") as f:
                 json.dump(welcome_list, f, ensure_ascii=False)
             await message.reply_text(f"✨ सीक्वेंस में वेलकम मैसेज जोड़ दिया गया है!\n📊 कुल सेट किए गए मैसेज: {len(welcome_list)}")
@@ -180,13 +180,13 @@ async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await message.reply_text("❌ कृपया अपने उस मैसेज पर रिप्लाई करें जिसे जोड़ना है और लिखें: /setwelcome")
 
-# --- 3. /clearwelcome कमांड (सारे वेलकम मैसेज साफ़ करने के लिए) ---
+# --- 3. /clearwelcome कमांड ---
 async def clear_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
     if os.path.exists(WELCOME_MSG_FILE):
         os.remove(WELCOME_MSG_FILE)
-    await message_reply = await update.message.reply_text("🗑️ सभी वेलकम मैसेज डिलीट/रीसेट कर दिए गए हैं!")
+    await update.message.reply_text("🗑️ सभी वेलकम मैसेज डिलीट/रीसेट कर दिए गए हैं!")
 
 # --- 4. टेक्स्ट ब्रॉडकास्ट कमांड ---
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
