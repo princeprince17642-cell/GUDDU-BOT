@@ -71,7 +71,7 @@ def get_saved_welcome_messages():
             return []
     return []
 
-# --- 1. Join Request आते ही सीक्वेंस से सारे वेलकम मैसेज और वॉइस नोट भेजना ---
+# --- 1. Join Request आते ही सीक्वेंस से सारे वेलकम मैसेज भेजना (प्रीमियम इमोजी और एंटिटीज के साथ) ---
 async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     request = update.chat_join_request
     user = request.from_user
@@ -88,43 +88,107 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
                 is_first = (index == 0)
                 
                 if msg_type == "text":
-                    text_content = welcome_data['text']
-                    custom_text = f"<b>{user_name}</b>, {text_content}" if is_first else text_content
-                    await context.bot.send_message(
-                        chat_id=user_id, 
-                        text=custom_text, 
-                        entities=welcome_data.get("entities"),
-                        parse_mode="HTML"
-                    )
+                    text_content = welcome_data.get('text', '')
+                    entities = welcome_data.get("entities", [])
+                    
+                    # अगर पहला मैसेज है तो नाम आगे जोड़ेंगे, साथ ही प्रीमियम इमोजी/एंटीटीज को खिसकाएंगे नहीं
+                    if is_first:
+                        prefix = f"{user_name}, "
+                        prefix_len = len(prefix.encode('utf-16-le')) // 2  # Telegram UTF-16 offset adjustment
+                        
+                        # पुरानी सारी एंटिटीज के ऑफसेट (index) को आगे खिसका देंगे ताकि प्रीमियम इमोजी अपनी सही जगह रहें
+                        adjusted_entities = []
+                        for e in entities:
+                            e_copy = e.copy()
+                            e_copy['offset'] += prefix_len
+                            adjusted_entities.append(e_copy)
+                        
+                        final_text = prefix + text_content
+                        await context.bot.send_message(
+                            chat_id=user_id, 
+                            text=final_text, 
+                            entities=adjusted_data_entities := adjusted_entities
+                        )
+                    else:
+                        await context.bot.send_message(
+                            chat_id=user_id, 
+                            text=text_content, 
+                            entities=entities
+                        )
+
                 elif msg_type == "photo":
-                    original_caption = welcome_data.get("caption", "")
-                    custom_caption = f"<b>{user_name}</b>, {original_caption}" if is_first and original_caption else (f"<b>{user_name}</b>" if is_first else original_caption)
+                    caption = welcome_data.get("caption", "")
+                    caption_entities = welcome_data.get("caption_entities", [])
+                    
+                    if is_first and caption:
+                        prefix = f"{user_name}, "
+                        prefix_len = len(prefix.encode('utf-16-le')) // 2
+                        adjusted_entities = []
+                        for e in caption_entities:
+                            e_copy = e.copy()
+                            e_copy['offset'] += prefix_len
+                            adjusted_entities.append(e_copy)
+                        caption = prefix + caption
+                        caption_entities = adjusted_entities
+                    elif is_first and not caption:
+                        caption = user_name
+                        caption_entities = []
+
                     await context.bot.send_photo(
                         chat_id=user_id, 
                         photo=welcome_data["file_id"], 
-                        caption=custom_caption,
-                        caption_entities=welcome_data.get("caption_entities"),
-                        parse_mode="HTML"
+                        caption=caption,
+                        caption_entities=caption_entities
                     )
+
                 elif msg_type == "document":
-                    original_caption = welcome_data.get("caption", "")
-                    custom_caption = f"<b>{user_name}</b>, {original_caption}" if is_first and original_caption else (f"<b>{user_name}</b>" if is_first else original_caption)
+                    caption = welcome_data.get("caption", "")
+                    caption_entities = welcome_data.get("caption_entities", [])
+                    
+                    if is_first and caption:
+                        prefix = f"{user_name}, "
+                        prefix_len = len(prefix.encode('utf-16-le')) // 2
+                        adjusted_entities = []
+                        for e in caption_entities:
+                            e_copy = e.copy()
+                            e_copy['offset'] += prefix_len
+                            adjusted_entities.append(e_copy)
+                        caption = prefix + caption
+                        caption_entities = adjusted_entities
+                    elif is_first and not caption:
+                        caption = user_name
+                        caption_entities = []
+
                     await context.bot.send_document(
                         chat_id=user_id,
                         document=welcome_data["file_id"],
-                        caption=custom_caption,
-                        caption_entities=welcome_data.get("caption_entities"),
-                        parse_mode="HTML"
+                        caption=caption,
+                        caption_entities=caption_entities
                     )
+
                 elif msg_type == "voice":
-                    original_caption = welcome_data.get("caption", "")
-                    custom_caption = f"<b>{user_name}</b>, {original_caption}" if is_first and original_caption else (f"<b>{user_name}</b>" if is_first else original_caption)
+                    caption = welcome_data.get("caption", "")
+                    caption_entities = welcome_data.get("caption_entities", [])
+                    
+                    if is_first and caption:
+                        prefix = f"{user_name}, "
+                        prefix_len = len(prefix.encode('utf-16-le')) // 2
+                        adjusted_entities = []
+                        for e in caption_entities:
+                            e_copy = e.copy()
+                            e_copy['offset'] += prefix_len
+                            adjusted_entities.append(e_copy)
+                        caption = prefix + caption
+                        caption_entities = adjusted_entities
+                    elif is_first and not caption:
+                        caption = user_name
+                        caption_entities = []
+
                     await context.bot.send_voice(
                         chat_id=user_id,
                         voice=welcome_data["file_id"],
-                        caption=custom_caption,
-                        caption_entities=welcome_data.get("caption_entities"),
-                        parse_mode="HTML"
+                        caption=caption,
+                        caption_entities=caption_entities
                     )
             except Exception as e:
                 print(f"Error sending sequence welcome message {index}: {e}")
@@ -134,7 +198,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print(f"Error sending default text: {e}")
 
-# --- 2. /setwelcome कमांड (अब Voice Note भी सपोर्ट करेगा) ---
+# --- 2. /setwelcome कमांड (प्रीमियम इमोजी और फोंट के साथ सेव करेगा) ---
 async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -177,7 +241,7 @@ async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             welcome_list.append(welcome_data)
             with open(WELCOME_MSG_FILE, "w", encoding="utf-8") as f:
                 json.dump(welcome_list, f, ensure_ascii=False)
-            await message.reply_text(f"✨ सीक्वेंस में वेलकम मैसेज (वॉइस नोट के साथ) जोड़ दिया गया है!\n📊 कुल सेट किए गए मैसेज: {len(welcome_list)}")
+            await message.reply_text(f"✨ प्रीमियम इमोजी और स्टाइल के साथ मैसेज जोड़ दिया गया है!\n📊 कुल सेट किए गए मैसेज: {len(welcome_list)}")
         else:
             await message.reply_text("❌ जिस मैसेज पर रिप्लाई किया है, उसमें टेक्स्ट, फोटो, फाइल या वॉइस नोट होना चाहिए।")
     else:
@@ -225,7 +289,6 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
 
     if user.id == ADMIN_ID:
-        # अगर एडमिन किसी यूजर के मैसेज पर रिप्लाई करे
         if message.reply_to_message:
             replied_text = message.reply_to_message.text or message.reply_to_message.caption
             if replied_text and "User ID:" in replied_text:
