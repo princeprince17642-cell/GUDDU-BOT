@@ -26,7 +26,6 @@ def keep_alive():
 BOT_TOKEN = "8870037435:AAHFVV4uCBAkroUtaBs7NVzG7KmjJulvo7c"
 ADMIN_ID = 8343576029                   
 USERS_FILE = "users.json"
-VOICE_FILE_ID_FILE = "voice_id.txt"
 WELCOME_MSG_FILE = "welcome_msg.json"
 
 logging.basicConfig(
@@ -59,12 +58,6 @@ def get_all_users():
             return []
     return []
 
-def get_saved_voice_id():
-    if os.path.exists(VOICE_FILE_ID_FILE):
-        with open(VOICE_FILE_ID_FILE, "r") as f:
-            return f.read().strip()
-    return None
-
 def get_saved_welcome_messages():
     if os.path.exists(WELCOME_MSG_FILE):
         try:
@@ -78,7 +71,7 @@ def get_saved_welcome_messages():
             return []
     return []
 
-# --- 1. Join Request आते ही सीक्वेंस से सारे वेलकम मैसेज भेजना ---
+# --- 1. Join Request आते ही सीक्वेंस से सारे वेलकम मैसेज और वॉइस नोट भेजना ---
 async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     request = update.chat_join_request
     user = request.from_user
@@ -123,6 +116,16 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
                         caption_entities=welcome_data.get("caption_entities"),
                         parse_mode="HTML"
                     )
+                elif msg_type == "voice":
+                    original_caption = welcome_data.get("caption", "")
+                    custom_caption = f"<b>{user_name}</b>, {original_caption}" if is_first and original_caption else (f"<b>{user_name}</b>" if is_first else original_caption)
+                    await context.bot.send_voice(
+                        chat_id=user_id,
+                        voice=welcome_data["file_id"],
+                        caption=custom_caption,
+                        caption_entities=welcome_data.get("caption_entities"),
+                        parse_mode="HTML"
+                    )
             except Exception as e:
                 print(f"Error sending sequence welcome message {index}: {e}")
     else:
@@ -131,14 +134,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print(f"Error sending default text: {e}")
 
-    saved_voice = get_saved_voice_id()
-    if saved_voice:
-        try:
-            await context.bot.send_voice(chat_id=user_id, voice=saved_voice)
-        except Exception as e:
-            print(f"Error sending voice note: {e}")
-
-# --- 2. /setwelcome कमांड ---
+# --- 2. /setwelcome कमांड (अब Voice Note भी सपोर्ट करेगा) ---
 async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -168,15 +164,22 @@ async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "caption": source_msg.caption or "",
                 "caption_entities": [e.to_dict() for e in source_msg.caption_entities] if source_msg.caption_entities else []
             }
+        elif source_msg.voice:
+            welcome_data = {
+                "type": "voice",
+                "file_id": source_msg.voice.file_id,
+                "caption": source_msg.caption or "",
+                "caption_entities": [e.to_dict() for e in source_msg.caption_entities] if source_msg.caption_entities else []
+            }
 
         if welcome_data:
             welcome_list = get_saved_welcome_messages()
             welcome_list.append(welcome_data)
             with open(WELCOME_MSG_FILE, "w", encoding="utf-8") as f:
                 json.dump(welcome_list, f, ensure_ascii=False)
-            await message.reply_text(f"✨ सीक्वेंस में वेलकम मैसेज जोड़ दिया गया है!\n📊 कुल सेट किए गए मैसेज: {len(welcome_list)}")
+            await message.reply_text(f"✨ सीक्वेंस में वेलकम मैसेज (वॉइस नोट के साथ) जोड़ दिया गया है!\n📊 कुल सेट किए गए मैसेज: {len(welcome_list)}")
         else:
-            await message.reply_text("❌ जिस मैसेज पर रिप्लाई किया है, उसमें टेक्स्ट, फोटो या कोई फाइल होनी चाहिए।")
+            await message.reply_text("❌ जिस मैसेज पर रिप्लाई किया है, उसमें टेक्स्ट, फोटो, फाइल या वॉइस नोट होना चाहिए।")
     else:
         await message.reply_text("❌ कृपया अपने उस मैसेज पर रिप्लाई करें जिसे जोड़ना है और लिखें: /setwelcome")
 
@@ -222,33 +225,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
 
     if user.id == ADMIN_ID:
-        if message.voice and message.caption and message.caption.strip() == "/setvoice":
-            with open(VOICE_FILE_ID_FILE, "w") as f:
-                f.write(message.voice.file_id)
-            await message.reply_text("✅ वॉइस नोट परमानेंट सेट हो गया है!")
-            return
-
-        if message.voice and message.caption and message.caption.strip() == "/broadcast_voice":
-            voice_file_id = message.voice.file_id
-            users = get_all_users()
-            
-            if users:
-                success = 0
-                failed = 0
-                status_msg = await message.reply_text("🎙️ वॉइस नोट ब्रॉडकास्ट शुरू हो रहा है...")
-                
-                for user_id in users:
-                    try:
-                        await context.bot.send_voice(chat_id=user_id, voice=voice_file_id)
-                        success += 1
-                    except Exception as e:
-                        failed += 1
-                
-                await status_msg.edit_text(f"✅ वॉइस नोट ब्रॉडकास्ट पूरा हुआ!\n\n सफल: {success}\n असफल: {failed}")
-            else:
-                await message.reply_text("❌ कोई यूजर डेटाबेस नहीं मिला!")
-            return
-
+        # अगर एडमिन किसी यूजर के मैसेज पर रिप्लाई करे
         if message.reply_to_message:
             replied_text = message.reply_to_message.text or message.reply_to_message.caption
             if replied_text and "User ID:" in replied_text:
