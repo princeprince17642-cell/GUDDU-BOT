@@ -71,7 +71,7 @@ def get_saved_welcome_messages():
             return []
     return []
 
-# --- 1. Join Request आते ही सीक्वेंस से सारे वेलकम मैसेज भेजना (प्रीमियम इमोजी और एंटिटीज के साथ) ---
+# --- 1. Join Request आते ही सीक्वेंस से सारे वेलकम मैसेज भेजना ---
 async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     request = update.chat_join_request
     user = request.from_user
@@ -91,12 +91,10 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
                     text_content = welcome_data.get('text', '')
                     entities = welcome_data.get("entities", [])
                     
-                    # अगर पहला मैसेज है तो नाम आगे जोड़ेंगे, साथ ही प्रीमियम इमोजी/एंटीटीज को खिसकाएंगे नहीं
                     if is_first:
                         prefix = f"{user_name}, "
-                        prefix_len = len(prefix.encode('utf-16-le')) // 2  # Telegram UTF-16 offset adjustment
+                        prefix_len = len(prefix.encode('utf-16-le')) // 2
                         
-                        # पुरानी सारी एंटिटीज के ऑफसेट (index) को आगे खिसका देंगे ताकि प्रीमियम इमोजी अपनी सही जगह रहें
                         adjusted_entities = []
                         for e in entities:
                             e_copy = e.copy()
@@ -107,7 +105,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
                         await context.bot.send_message(
                             chat_id=user_id, 
                             text=final_text, 
-                            entities=adjusted_data_entities := adjusted_entities
+                            entities=adjusted_entities
                         )
                     else:
                         await context.bot.send_message(
@@ -198,7 +196,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print(f"Error sending default text: {e}")
 
-# --- 2. /setwelcome कमांड (प्रीमियम इमोजी और फोंट के साथ सेव करेगा) ---
+# --- 2. /setwelcome कमांड ---
 async def set_welcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
